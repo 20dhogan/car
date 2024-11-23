@@ -11,6 +11,12 @@ int main(void){
 	//Add init functions here
 	motor_init();
 	keypad_init();
+	ultraSonic_init();
+	TIM2_Init();
+	while(1){
+		float cmDistance = sonicDistance();
+	}
+	
 
 	while(1){
 		if(state == 0){

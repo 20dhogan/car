@@ -15,5 +15,8 @@ void turnRight(void);
 void turn_180(void);
 void user_input(void);
 void keypad_init(void);
+void ultraSonic_init(void);
+float sonicDistance(void);
+void TIM2_Init(void);
 
 #endif

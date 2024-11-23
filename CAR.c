@@ -9,72 +9,34 @@ void gpio_Write(GPIO_TypeDef *port, uint8_t pin, bool val);
 void LCD_Send4Bits(uint8_t data);
 void Toggle(void);
 bool gpio_Read(GPIO_TypeDef *port, uint8_t pin);
+/*
+		//forward: -1
+		//Backwards: -2
+		//Left: -3
+		//right: -4
+		//#: -5
+		*/
+//Global Variables	
+volatile int state = 0;
+volatile int numberOfCommands = 0;
+volatile int value[100];
+volatile int command[100];
+volatile int currentValue = 0;
 
-bool gpio_Read(GPIO_TypeDef *port, uint8_t pin){
-	uint16_t x = 0;
-	x |= port->IDR;
-	x &= (1 << pin);
-	if(x == (1 << pin)){
-		return true;
-	}
-	else{
-		return false;
-	}
-}
-
-void delay_ms(unsigned int ms) {
-	unsigned int i,j;
-	for (i=0;i<ms;i++){
-		{
-			for(j=0;j<300;j++);
-		}
-	}
-}
-
-void delay_us(unsigned int us) {
-	unsigned int i,j;
-	for (i=0;i<us;i++){
-		{
-			for(j=0;j<30;j++);
-		}
-	}
-}
-
-void gpio_Write(GPIO_TypeDef *port, uint8_t pin, bool val){
-	if(val == true){
-		port->ODR |= (1 << pin); //write a 1
-	} else {
-		port->ODR &= ~(1 << pin); //write a 0
-	} 
-}
-
-//Global Variables
-	
-	volatile int state = 0;
-	volatile int numberOfCommands = 0;
-	volatile int value[100];
-	volatile int command[100];
-	//volatile int j = 0;
-  volatile int currentValue = 0;
-
-	static bool motorRight[4][4] = {
+static bool motorRight[4][4] = {
     {1, 1, 0, 0},
     {0, 1, 1, 0},
     {0, 0, 1, 1},
     {1, 0, 0, 1}
 };
 	
-	static bool motorLeft[4][4] = {
+static bool motorLeft[4][4] = {
     {1, 1, 0, 0},
     {1, 0, 0, 1},
     {0, 0, 1, 1},
     {0, 1, 1, 0}
 };
-		//forward: -1
-		//Backwards: -2
-		//Left: -3
-		//right: -4
-		//#: -5
+		
 static int key_map[4][4] = {
 	{1, 2, 3, -1},
 	{4, 5, 6, -2},
@@ -90,6 +52,67 @@ void buzz() {
         delay_ms(1);
     }
 }
+
+
+void ultraSonic_init(void){
+	//Enalbe gpioc clock
+	RCC->AHB2ENR |= RCC_AHB2ENR_GPIOCEN;
+	
+	//set pc0,1,2 as outputs
+	GPIOC->MODER &= 0xFFFFFFFC0; //clear pins
+	GPIOC->MODER |= 0x0000000D5;
+	
+	//set pc3,4,5 as inputs
+	GPIOC->MODER &= 0xFFFFF03F;
+	
+	//set pc3,4,5 as pull down
+	GPIOC->PUPDR &= 0xFFFFF03F; //clear pins
+	GPIOC->PUPDR |= 0x00000A80;
+}
+
+void TIM2_Init(void) {
+    // 1. Enable the TIM2 clock
+    RCC->APB1ENR1 |= RCC_APB1ENR1_TIM2EN;
+
+    // 2. Configure prescaler for 1 MHz (1 µs per tick)
+    TIM2->PSC = 16 - 1;  // System Clock = 4 MHz
+
+    // 3. Set auto-reload value to max (32-bit counter)
+    TIM2->ARR = 0xFFFFFFFF;
+
+    // 4. Reset the counter to zero
+    TIM2->CNT = 0;
+
+    // 5. Enable the timer
+    TIM2->CR1 |= TIM_CR1_CEN;
+}
+
+
+float sonicDistance(void) {
+    //Send a 10 µs pulse on the Trigger pin (PC0)
+    gpio_Write(GPIOC, 0, 1);
+    delay_us(10);  //Ensure a 10 µs pulse
+    gpio_Write(GPIOC, 0, 0);
+    
+    uint32_t start_time = 0;
+		uint32_t stop_time = 0;
+
+    // Wait for rising edge on Echo pin (PC1)
+    while (!gpio_Read(GPIOC, 3)); // Block until pin goes HIGH
+    start_time = TIM2->CNT;       // Start timer count
+
+    // Wait for falling edge on Echo pin (PC1)
+    while (gpio_Read(GPIOC, 3));  // Block until pin goes LOW
+    stop_time = TIM2->CNT;        // Stop timer count
+
+    // Calculate pulse duration in microseconds
+    uint32_t pulse_duration = stop_time - start_time;
+
+    // Calculate distance in cm
+    float distance = ((pulse_duration * 0.0343f) / 2.0f)/4;
+    return distance;
+}
+
 
 void keypad_init(void){
 	//clock initialization
@@ -260,4 +283,39 @@ void user_input(void) {
     else if (input >= 0) { //stores user input values
         currentValue = currentValue * 10 + input; //multi digit number
     }
+}
+
+bool gpio_Read(GPIO_TypeDef *port, uint8_t pin){
+	uint16_t x = 0;
+	x |= port->IDR;
+	x &= (1 << pin);
+	if(x == (1 << pin)){
+		return true;
+	}
+	else{
+		return false;
+	}
+}
+
+void delay_ms(unsigned int ms) {
+	unsigned int i,j;
+	for (i=0;i<ms;i++){
+		{
+			for(j=0;j<300;j++);
+		}
+	}
+}
+
+void delay_us(uint32_t us) {
+    TIM2->CNT = 0; // Reset the counter
+    while (TIM2->CNT < us); // Wait until the counter reaches the delay time
+}
+
+
+void gpio_Write(GPIO_TypeDef *port, uint8_t pin, bool val){
+	if(val == true){
+		port->ODR |= (1 << pin); //write a 1
+	} else {
+		port->ODR &= ~(1 << pin); //write a 0
+	} 
 }
