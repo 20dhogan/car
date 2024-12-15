@@ -1,53 +1,80 @@
 #include "stm32l476xx.h"
 #include "CAR.h"
 
+extern int mode;
 extern int state;
 extern int value[];
 extern int command[];
 extern int numberOfCommands;
 extern int currentValue;
 
-int main(void){	
-	//Add init functions here
+int main(void){
+	SystemClock_Config();
+	ultraSonic_init();
+	testClock();
+	//init functions
+	/*
 	motor_init();
 	keypad_init();
-	ultraSonic_init();
-	TIM2_Init();
-	while(1){
-		float cmDistance = sonicDistance();
-	}
+	LCD_Init();
+	LCD_Clear();
+	SysTick_Initialize(1000000);
 	
-
-	while(1){
-		if(state == 0){
-			user_input();
+	bool done = false;
+	while(!done){
+		LCD_DisplayString(0,(unsigned char*)"Mode 0 or 1?");
+		int mo = keypad_scan();
+		if(mode == 0 || mode == 1){
+			mode = mo;
+			done = true;
 		}
+	}
+
+	if(mode == 0){
+		LCD_Clear();
+		LCD_DisplayString(0,(unsigned char*)"Place near wall");
+		LCD_DisplayString(1,(unsigned char*)"Press # to begin");
+		int ans = 0;
+		while(ans != -5){
+			ans = keypad_scan();
+			state = 1;
+		}
+		MazeSolver();
+			
+	} else {
 		
-		if(state == 1){
-			//Drew's assignment
-			for(int i = 0; i < numberOfCommands; i++){
-				delay_ms(200);
-				switch(command[i]){
-					case -1:
-						DRIVE(value[i]);
-					break;
-					
-					case -2:
-						BACKWARDS(value[i]);
-					break;
-					
-					case -3:
-						LEFT(value[i]);
-					break;
-					
-					case -4:
-						RIGHT(value[i]);
-					break;					
-				}					
+		while(1){
+			if(state == 0){
+				user_input();
 			}
-			state = 0;
-			numberOfCommands = 0;
-			currentValue = 0;
-		}		
-	}		
+			
+			if(state == 1){
+				//Drew's assignment
+				for(int i = 0; i < numberOfCommands; i++){
+					delay_ms(200);
+					switch(command[i]){
+						case -1:
+							DRIVE(value[i]);
+						break;
+						
+						case -2:
+							BACKWARDS(value[i]);
+						break;
+						
+						case -3:
+							LEFT(value[i]);
+						break;
+						
+						case -4:
+							RIGHT(value[i]);
+						break;					
+					}					
+				}
+				state = 0;
+				numberOfCommands = 0;
+				currentValue = 0;
+			}		
+		}
+	}	
+	*/
 }	
