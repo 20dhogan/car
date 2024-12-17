@@ -9,20 +9,15 @@ extern int numberOfCommands;
 extern int currentValue;
 
 int main(void){
+	//init functions
 	SystemClock_Config();
 	ultraSonic_init();
-	testClock();
-	//init functions
-	/*
 	motor_init();
 	keypad_init();
-	LCD_Init();
-	LCD_Clear();
 	SysTick_Initialize(1000000);
 	
 	bool done = false;
 	while(!done){
-		LCD_DisplayString(0,(unsigned char*)"Mode 0 or 1?");
 		int mo = keypad_scan();
 		if(mode == 0 || mode == 1){
 			mode = mo;
@@ -31,15 +26,11 @@ int main(void){
 	}
 
 	if(mode == 0){
-		LCD_Clear();
-		LCD_DisplayString(0,(unsigned char*)"Place near wall");
-		LCD_DisplayString(1,(unsigned char*)"Press # to begin");
 		int ans = 0;
 		while(ans != -5){
 			ans = keypad_scan();
-			state = 1;
 		}
-		MazeSolver();
+		FollowWallLeft();
 			
 	} else {
 		
@@ -76,5 +67,4 @@ int main(void){
 			}		
 		}
 	}	
-	*/
 }	

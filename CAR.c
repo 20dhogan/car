@@ -1,7 +1,7 @@
 #include "CAR.h"
 #include "stm32l476xx.h"
 #include <stdbool.h>
-#define wheel_to_feet .4
+#define wheel_to_feet .785
 #define turn_value .3245
 #define MAX_TIMEOUT 50000
 
@@ -25,9 +25,9 @@ volatile int numberOfCommands = 0;
 volatile int value[100];
 volatile int command[100];
 volatile int currentValue = 0;
-static float distanceRight = 99999.0;
 static float distanceLeft = 0;
 static float distanceFront = 0;
+static float errorDistanceReading = -1;
 static bool motorRight[4][4] = {
     {1, 1, 0, 0},
     {0, 1, 1, 0},
@@ -48,78 +48,81 @@ static int key_map[4][4] = {
 };
 
 //Maze Functions*********************************************************************
-void MazeSolver(){
-	distanceLeft = sonicDistanceLeft();
-	distanceRight = 999999; //sonicDistanceRight();
-	
-	if(distanceLeft < distanceRight){
-		state = 1;
-		FollowWallLeft();
-	} else {
-		state = 2;
-		FollowWallRight();
-	}		
-}
-
 void FollowWallLeft(){
-		distanceLeft = sonicDistanceLeft();
-		distanceFront = sonicDistanceFront();
-		int skipLeft = 0;
-		int skipRight = 0;
-		bool skipL = false;
-		bool skipR = false;
+	distanceLeft = sonicDistanceLeft();
+	distanceFront = sonicDistanceFront();
+	int skipLeft = 0;
+	int skipRight = 0;
+	bool skipL = false;
+	bool skipR = false;
+	
 	while(1){
-		if(distanceFront < 10.0){
-			//Then we have hit a wall in the front
-			while(distanceFront < 10){
-			turnRight();
-			distanceFront = sonicDistanceFront();
+		
+		if(distanceLeft == errorDistanceReading){
+			distanceLeft = sonicDistanceLeft();
+			if(distanceLeft == errorDistanceReading){
+				reCenter();
 			}
 		}
 		
-		if(distanceLeft > 40){
-			while(distanceLeft > 20){
-			DRIVE(2);
-			turnLeft();
-			DRIVE(2);
-			distanceLeft = sonicDistanceLeft();	
+		
+		if(distanceLeft > 35 && distanceLeft != errorDistanceReading){
+			distanceLeft = sonicDistanceLeft();
+			if(distanceLeft > 35 && distanceLeft != errorDistanceReading){
+				//Our wall on the left has opened up. We need to turn left.
+				DRIVE_inches(10);
+				turnLeft();
+				distanceFront = sonicDistanceFront();
+				if(distanceFront > 20.0 && distanceFront != errorDistanceReading){
+					DRIVE_inches(8);
+					distanceLeft = sonicDistanceLeft();
+				}
 			}
 		}
+		
+		if(distanceFront < 25.0 && distanceFront != errorDistanceReading){
+			//Then we have hit a wall in the front
+			if(distanceFront < 10.0){
+				REVERSE_inches(5);
+			}
+			turnRight();
+			distanceLeft = sonicDistanceLeft();
+		}
+		
 
-		//Check if we should skip left wheel move for a cycle
-		if(skipLeft >= 2 && distanceLeft > 16){
+		//Check if we should skip left wheel motor cycle
+		if(skipLeft >= 2 && distanceLeft > 18 && distanceLeft != errorDistanceReading){
 			skipLeft = 0;
 			skipL = true;
 		} else {
-			if(distanceLeft > 15){
+			if(distanceLeft > 18 && distanceLeft != errorDistanceReading){
 				skipLeft++;
 			}
 		}
 
-		//Check if we should skip right wheel move for a cycle
-		if(skipRight >= 2 && distanceLeft < 12){
+		//Check if we should skip right wheel motor cycle
+		if(skipRight >= 2 && distanceLeft < 16 && distanceLeft != errorDistanceReading){
 			skipRight = 0;
 			skipR = true;
 		} else {
-			if(distanceLeft < 12){
+			if(distanceLeft < 16 && distanceLeft != errorDistanceReading){
 				skipRight++;
 			}
 		}
 		
-		//for(int k = 0; k <= 5; k++){ 
-			for(int i = 0; i <= 3; i++){
-				for(int j = 0; j <= 3; j++){
-					if(skipL == false){
-						gpio_Write(GPIOB, j, motorLeft[i][j]);
-					}
-						
-					if(skipR == false){
-						gpio_Write(GPIOB, j+4, motorRight[i][j]);
-					}
-					delay_micro_s(4); //edit accordingly
+
+		for(int i = 0; i <= 3; i++){
+			for(int j = 0; j <= 3; j++){
+				if(skipL == false){
+					gpio_Write(GPIOB, j, motorLeft[i][j]);
 				}
+						
+				if(skipR == false){
+					gpio_Write(GPIOB, j+4, motorRight[i][j]);
+				}
+				delay_micro_s(4); //edit accordingly
 			}
-		//}
+		}
 		
 		if(skipR == true){
 			skipR = false;
@@ -130,9 +133,46 @@ void FollowWallLeft(){
 	}
 }
 
-void FollowWallRight(){
 
+void reCenter(void){
+	bool edgeFound = false;
+	int turnDeg = 200;
+	int offSet = 10;
+	
+	for(int i = 0; i < turnDeg; i++){
+		turnRight_deg(1);
+		distanceLeft = sonicDistanceLeft();
+		if(distanceLeft != errorDistanceReading){
+			i = turnDeg;
+			edgeFound = true;
+		}
+	}
+		
+		if(edgeFound == true){
+			//we have found the edge, we need to go a little farther to be perpendeicular to wall
+			turnRight_deg(offSet);
+		} else {
+			
+			//We need to turn back and try the other way.
+			turnRight_deg(turnDeg);
+			//Now that we have turned back, lets try the other direction
+			for(int i = 0; i < turnDeg; i++){
+				turnRight_deg(1);
+				distanceLeft = sonicDistanceLeft();
+				if(distanceLeft != errorDistanceReading){
+					i = turnDeg;
+					edgeFound = true;
+				}
+			}
+			
+			if(edgeFound == true){
+				//we have found the edge, we need to go a little farther to be perpendeicular to wall
+				turnRight_deg(offSet);
+			}
+			
+		}
 }
+
 
 //Funciton from book
 void SysTick_Initialize(unsigned int ticks){
@@ -165,37 +205,8 @@ void SysTick_Initialize(unsigned int ticks){
 
 void SysTick_Handler(void){
 	if(mode == 0){
-		if(state == 1){			
-			//distanceRight = sonicDistanceRight();
 			distanceLeft = sonicDistanceLeft();
 			distanceFront = sonicDistanceFront();
-			/*
-		  // Create character arrays to hold the formatted strings
-			char frontDistanceStr[16]; 
-			char leftDistanceStr[16];
-
-			// Format the strings with prefixes and units
-			sprintf(frontDistanceStr, "F: %.2f cm", distanceFront);
-			sprintf(leftDistanceStr, "L: %.2f cm", distanceLeft);
-
-			//Pass the formatted strings to the LCD function
-			LCD_DisplayString(0, (unsigned char*)frontDistanceStr);
-			LCD_DisplayString(1, (unsigned char*)leftDistanceStr);			
-		}
-		if(state == 2){
-		  // Create character arrays to hold the formatted strings
-			char frontDistanceStr[16]; 
-			char rightDistanceStr[16];
-
-			// Format the strings with prefixes and units
-			sprintf(frontDistanceStr, "F: %.2f cm", distanceFront);
-			sprintf(rightDistanceStr, "R:  %.2f cm", distanceRight);
-
-			//Pass the formatted strings to the LCD function
-			LCD_DisplayString(0, (unsigned char*)frontDistanceStr);
-			LCD_DisplayString(1, (unsigned char*)rightDistanceStr);
-			*/
-		}
 	}
 }
 
@@ -219,6 +230,42 @@ void DRIVE(int feet){
 				for(int j = 0; j <= 3; j++){
 					gpio_Write(GPIOB, j, motorLeft[i][j]);
 					gpio_Write(GPIOB, j+4, motorRight[i][j]);
+				}
+				delay_ms(2); //edit accordingly
+				delay_us(50);
+			}
+		}	
+}
+void DRIVE_inches(float inches){
+		//preSet
+		float feet = inches/12;
+		float wheelRotations = (feet * wheel_to_feet);
+		float motorRotations = wheelRotations*512;
+		long fullTurns = (int)motorRotations;
+			
+		for(int k = 1; k <= fullTurns; k++){
+			for(int i = 0; i <= 3; i++){
+				for(int j = 0; j <= 3; j++){
+					gpio_Write(GPIOB, j, motorLeft[i][j]);
+					gpio_Write(GPIOB, j+4, motorRight[i][j]);
+				}
+				delay_ms(2); //edit accordingly
+				delay_us(50);
+			}
+		}	
+}
+void REVERSE_inches(float inches){
+		//preSet
+		float feet = inches/12;
+		float wheelRotations = (feet * wheel_to_feet);
+		float motorRotations = wheelRotations*512;
+		long fullTurns = (int)motorRotations;
+			
+		for(int k = 1; k <= fullTurns; k++){
+			for(int i = 0; i <= 3; i++){
+				for(int j = 0; j <= 3; j++){
+					gpio_Write(GPIOB, j, motorRight[i][j]);
+					gpio_Write(GPIOB, j+4, motorLeft[i][j]);
 				}
 				delay_ms(2); //edit accordingly
 				delay_us(50);
@@ -287,6 +334,31 @@ void BACKWARDS(int feet){
 	turn_180();
 	delay_ms(200);
 	DRIVE(feet);
+}
+void turnLeft_deg(int rotation){
+	for(int k = 1; k <= rotation; k++){
+		for(int i = 0; i <= 3; i++){
+			for(int j = 0; j <= 3; j++){
+					gpio_Write(GPIOB, j, motorRight[i][j]);
+					gpio_Write(GPIOB, j+4, motorRight[i][j]);
+				}
+				delay_ms(2); //edit accordingly
+				delay_us(50);
+		}
+	}
+}
+
+void turnRight_deg(int rotation){
+	for(int k = 1; k <= rotation; k++){
+		for(int i = 0; i <= 3; i++){
+			for(int j = 0; j <= 3; j++){
+				gpio_Write(GPIOB, j, motorLeft[i][j]);
+				gpio_Write(GPIOB, j+4, motorLeft[i][j]);
+			}
+			delay_ms(2); //edit accordingly
+			delay_us(50);
+		}
+	}	
 }
 
 //Keypad Functions *************************************************************
@@ -425,7 +497,7 @@ float sonicDistanceFront(void) {
     timeout = TIM2->CNT;  // Capture the current timer value for timeout reference
     while (!gpio_Read(GPIOC, 3)) { // Block until pin goes HIGH
         if ((TIM2->CNT - timeout) > MAX_TIMEOUT) { // Check timeout
-            return 19;  // Return -1 to indicate timeout error
+            return errorDistanceReading;  // Return -1 to indicate timeout error
         }
     }
     start_time = TIM2->CNT;  // Start timer count
@@ -434,7 +506,7 @@ float sonicDistanceFront(void) {
     timeout = TIM2->CNT;  // Reset timeout reference
     while (gpio_Read(GPIOC, 3)) { // Block until pin goes LOW
         if ((TIM2->CNT - timeout) > MAX_TIMEOUT) { // Check timeout
-            return 19;  // Return -1 to indicate timeout error
+            return errorDistanceReading;  // Return -1 to indicate timeout error
         }
     }
     stop_time = TIM2->CNT;  // Stop timer count
@@ -462,7 +534,7 @@ float sonicDistanceLeft(void) {
     timeout = TIM2->CNT;  // Capture the current timer value for timeout reference
     while (!gpio_Read(GPIOC, 4)) { // Block until pin goes HIGH
         if ((TIM2->CNT - timeout) > MAX_TIMEOUT) { // Check timeout
-            return 19;  // Return -1 to indicate timeout error
+            return errorDistanceReading;  // Return -1 to indicate timeout error
         }
     }
     start_time = TIM2->CNT;  // Start timer count
@@ -471,7 +543,7 @@ float sonicDistanceLeft(void) {
     timeout = TIM2->CNT;  // Reset timeout reference
     while (gpio_Read(GPIOC, 4)) { // Block until pin goes LOW
         if ((TIM2->CNT - timeout) > MAX_TIMEOUT) { // Check timeout
-            return 19;  // Return -1 to indicate timeout error
+            return errorDistanceReading;  // Return -1 to indicate timeout error
         }
     }
     stop_time = TIM2->CNT;  // Stop timer count
@@ -483,118 +555,6 @@ float sonicDistanceLeft(void) {
     float distance = ((pulse_duration * 0.0343f) / 2.0f) / 4;
 
     return distance;
-}
-
-
-float sonicDistanceRight(void) {
-    //Send a 10 µs pulse on the Trigger pin (PC0)
-    gpio_Write(GPIOC, 2, 1);
-    delay_us(10);  //Ensure a 10 µs pulse
-    gpio_Write(GPIOC, 2, 0);
-    
-    uint32_t start_time = 0;
-		uint32_t stop_time = 0;
-
-    // Wait for rising edge on Echo pin (PC1)
-    while (!gpio_Read(GPIOC, 5)); // Block until pin goes HIGH
-    start_time = TIM2->CNT;       // Start timer count
-
-    // Wait for falling edge on Echo pin (PC1)
-    while (gpio_Read(GPIOC, 5));  // Block until pin goes LOW
-    stop_time = TIM2->CNT;        // Stop timer count
-
-    // Calculate pulse duration in microseconds
-    uint32_t pulse_duration = stop_time - start_time;
-
-    // Calculate distance in cm
-    float distance = ((pulse_duration * 0.0343f) / 2.0f)/4;
-    return distance;
-}
-
-//LCD Functions******************************************************************************
-void LCD_WriteCom(unsigned char com){
-	unsigned char com1, com2;
-	com1 = com & 0xF0; // com1 = 0x xxxx 0000
-	com2 = (com << 4) & 0xF0; // com2 = 0x xxxx 0000
-	
-	gpio_Write(GPIOC, 10, 0); //set E to 0
-	gpio_Write(GPIOC, 11, 0); //set RS to 0
-	
-	LCD_Send4Bits(com1 >> 4); //shift to the right 4 bits 0x 0000 xxxx
-	Toggle();
-	gpio_Write(GPIOC, 11, 0); //set RS to 0
-	LCD_Send4Bits(com2 >> 4); //shift to the right 4 bits 0x 0000 xxxx
-	Toggle();
-}
-
-void LCD_WriteData(unsigned char dat) {
-	unsigned char dat1, dat2;
-	dat1 = dat & 0xF0; // com1 = 0x xxxx 0000
-	dat2 = (dat << 4) & 0xF0; // com2 = 0x xxxx 0000
-	
-	gpio_Write(GPIOC, 10, 0); //set E to 0
-	gpio_Write(GPIOC, 11, 1); //set RS to 1
-	
-	LCD_Send4Bits(dat1 >> 4); //shift to the right 4 bits 0x 0000 xxxx
-	Toggle();
-	gpio_Write(GPIOC, 11, 1); //set RS to 1
-	LCD_Send4Bits(dat2 >> 4); //shift to the right 4 bits 0x 0000 xxxx
-	Toggle();
-}
-
-void LCD_Init(void){
-	
-	RCC->AHB2ENR |= RCC_AHB2ENR_GPIOCEN;
-	
-	//Note: PC 0-5 are being used by ultrasonic
-	GPIOC->MODER &= 0xFF000FFF;  //clear PC 6-11
-  
-	GPIOC->MODER |= 0x00555000; //Set PC 6-11 as output
-	
-	LCD_WriteCom(0x28); //4 bit mode 20 28 0c 14 01
-	
-	LCD_WriteCom(0x02); //display on, cursor off, blink off
-	delay_ms(2);
-	
-	LCD_WriteCom(0x0C); //increment cursor, no display shift
-	
-	LCD_WriteCom(0x06); //cursor at position 0
-	
-	LCD_WriteCom(0x01); //clear screen
-	
-	delay_ms(200);
-}
-
-void LCD_Clear(void){
-  LCD_WriteCom(0x01); //clear screen
-	delay_ms(300);
-}
-
-void LCD_DisplayString(unsigned int line, unsigned char *ptr) {
-		if (line == 0) {
-        LCD_WriteCom(0x80); // Line 0, position 0
-    }
-    else if (line == 1) {
-        LCD_WriteCom(0xC0); // Line 1, position 0
-    }
-
-    //Loop through each character in the string and display it
-    unsigned char i;
-		for(i = 0; ptr[i] != '\0'; i++){
-			LCD_WriteData(ptr[i]);
-		}
-}
-
-void LCD_Send4Bits(uint8_t data) {
-  GPIOC->ODR &= 0xFC3F;            // Clear bits 6-9 (mask: 1111 1100 0011 1111)
-  GPIOC->ODR |= ((data & 0x0F) << 6); // Set bits 6-9 using the lower nibble of `data`
-}
-
-void Toggle(void){
-	gpio_Write(GPIOC, 10, 1);
-	delay_ms(2);
-	gpio_Write(GPIOC, 10, 0);
-	delay_ms(2);
 }
 
 //Helper Functions***************************************************************************
@@ -647,21 +607,3 @@ void SystemClock_Config(void) {
 		RCC->CR |= RCC_CR_HSION;
 		while((RCC->CR  & RCC_CR_HSIRDY) == 0);
 }
-
-void testClock(void) {
-    // Enable clock for GPIOA
-    RCC->AHB2ENR |= RCC_AHB2ENR_GPIOAEN;
-
-    // Set PA1 as output
-    GPIOA->MODER &= ~(3 << (1 * 2)); // Clear mode bits for PA1 (2 bits per pin)
-    GPIOA->MODER |= (1 << (1 * 2));  // Set PA1 as output (01)
-
-    // Set PA1 high
-    GPIOA->ODR |= (1 << 1); // Set PA1 (bit 1 of ODR) high
-
-    delay_us(1); // 1 microsecond delay
-
-    // Set PA1 low
-    GPIOA->ODR &= ~(1 << 1); // Clear PA1 (bit 1 of ODR) to set it low
-}
-
